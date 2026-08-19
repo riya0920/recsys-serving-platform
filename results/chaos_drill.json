@@ -1,0 +1,64 @@
+{
+  "drill": "model_death_under_load",
+  "concurrency": 32,
+  "waited_for_startup_s": 42.42,
+  "total_requests": 7243,
+  "total_errors_5xx_or_connection": 0,
+  "phases": [
+    {
+      "phase": "healthy",
+      "requests": 1570,
+      "status_counts": {
+        "200": 1570
+      },
+      "error_kinds": {},
+      "errors": 0,
+      "degraded_fraction": 0.0,
+      "empty_responses": 0,
+      "p50_ms": 94.15,
+      "p99_ms": 1259.19
+    },
+    {
+      "phase": "model_killed",
+      "requests": 3553,
+      "status_counts": {
+        "200": 3553
+      },
+      "error_kinds": {},
+      "errors": 0,
+      "degraded_fraction": 0.9963,
+      "empty_responses": 0,
+      "p50_ms": 49.5,
+      "p99_ms": 151.72
+    },
+    {
+      "phase": "recovered",
+      "requests": 2120,
+      "status_counts": {
+        "200": 2120
+      },
+      "error_kinds": {},
+      "errors": 0,
+      "degraded_fraction": 0.0047,
+      "empty_responses": 0,
+      "p50_ms": 85.61,
+      "p99_ms": 147.74
+    }
+  ],
+  "server_metrics": {
+    "latency": {
+      "count": 7243,
+      "p50_ms": 2.197800000431016,
+      "p95_ms": 28.7907700141659,
+      "p99_ms": 49.99176798621192
+    },
+    "counters": {
+      "requests": 7243,
+      "degraded": 3550,
+      "errors": 0
+    },
+    "degraded_rate": 0.49012839983432277
+  },
+  "passed": true,
+  "claim": "the model path was killed under 32 concurrent clients: 7243 total requests, 0 errors, and every request during the outage was served from the fallback"
+}

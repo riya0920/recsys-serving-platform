@@ -1,0 +1,31 @@
+{
+  "params": {
+    "candidates": 200,
+    "negatives_per_pos": 4,
+    "max_iter": 120,
+    "learning_rate": 0.08,
+    "max_depth": 10,
+    "train_users": 1500,
+    "eval_users": 400,
+    "n_items": 8000,
+    "n_events": 200000,
+    "no_mlflow": false
+  },
+  "features": [
+    "retrieval_score",
+    "item_log_popularity",
+    "item_rank_in_slate",
+    "user_activity",
+    "user_item_topic_match",
+    "item_recency"
+  ],
+  "metrics": {
+    "ndcg_at_10_retrieval": 0.08884962740594864,
+    "ndcg_at_10_ranked": 0.11122449864691233,
+    "recall_at_10_retrieval": 0.1170892857142857,
+    "recall_at_10_ranked": 0.13844047619047617,
+    "lift_ndcg_pct": 25.182853202900052,
+    "n_users": 400,
+    "n_train_rows": 7615
+  }
+}

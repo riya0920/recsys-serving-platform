@@ -7,3 +7,6 @@ artifacts/*.faiss
 artifacts/*.npy
 .pytest_cache/
 mlruns/
+artifacts/mlflow.db
+artifacts/mlruns/
+artifacts/ranker.pkl

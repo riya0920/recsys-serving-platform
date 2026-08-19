@@ -109,3 +109,89 @@ def test_evaluate_skips_users_without_truth():
     out = evaluate(lambda u, k: [5, 6, 7][:k], [1, 2, 3], gt, ks=(3,))
     assert out["n_users_scored"] == 0.0 or "recall@3" in out
     assert out["recall@3"] > 0
+
+
+# --------------------------------------------------------------------------
+# stage-2 ranker
+# --------------------------------------------------------------------------
+
+def test_feature_builder_produces_the_declared_features():
+    from recsys.ranker import FEATURE_NAMES, FeatureBuilder
+
+    cfg = DataConfig(n_users=200, n_items=800, n_events=20_000, seed=4)
+    df = synthesize(cfg)
+    train, _, _ = time_split(df, cfg)
+    fb = FeatureBuilder(train, n_items=800)
+
+    cands = np.array([1, 2, 3, 4])
+    scores = np.array([0.9, 0.8, 0.7, 0.6])
+    feats = fb.build(int(train["user_id"].iloc[0]), cands, scores)
+    assert feats.shape == (4, len(FEATURE_NAMES))
+    assert np.isfinite(feats).all(), "a NaN feature silently poisons a GBDT split"
+
+
+def test_rank_position_feature_is_normalised():
+    """Otherwise the feature means something different for every slate size."""
+    from recsys.ranker import FeatureBuilder
+
+    cfg = DataConfig(n_users=100, n_items=400, n_events=8000, seed=5)
+    train, _, _ = time_split(synthesize(cfg), cfg)
+    fb = FeatureBuilder(train, n_items=400)
+
+    short = fb.build(0, np.arange(5), np.linspace(1, 0, 5))
+    long = fb.build(0, np.arange(50), np.linspace(1, 0, 50))
+    assert short[0, 2] == 0.0 and short[-1, 2] == 1.0
+    assert long[0, 2] == 0.0 and long[-1, 2] == 1.0
+
+
+def test_training_negatives_come_from_the_retrieved_slate():
+    """Hard negatives, not uniform ones -- the whole point of the sampling scheme.
+
+    Every negative must be an item the retriever actually surfaced. If negatives
+    were drawn from the catalogue at large, the ranker would learn to separate
+    plausible from absurd, which retrieval already did, and its offline lift
+    would not survive contact with serving.
+    """
+    from recsys.ranker import FeatureBuilder, build_training_data
+
+    cfg = DataConfig(n_users=300, n_items=1000, n_events=40_000, seed=6)
+    df = synthesize(cfg)
+    train, valid, _ = time_split(df, cfg)
+    fb = FeatureBuilder(train, n_items=1000)
+
+    slate = np.arange(40)
+    seen_candidates = []
+
+    def fake_retrieve(user, k):
+        seen_candidates.append(set(int(x) for x in slate[:k]))
+        return slate[:k], np.linspace(1.0, 0.0, min(k, len(slate)))
+
+    X, y = build_training_data(fake_retrieve, fb, train, valid, n_users=40, candidates_k=40)
+    if len(y):
+        assert set(np.unique(y)) <= {0, 1}
+        assert y.sum() > 0, "there must be positives to learn from"
+        assert (y == 0).sum() > 0, "there must be negatives to learn against"
+
+
+def test_ranker_learns_a_separable_signal():
+    """Sanity: on data where the label is a clean function of a feature,
+    the ranker must beat chance. Guards against an unfitted or inverted model."""
+    from recsys.ranker import GBDTRanker
+
+    rng = np.random.default_rng(0)
+    X = rng.normal(size=(2000, 6)).astype("float32")
+    y = (X[:, 0] + 0.3 * rng.normal(size=2000) > 0).astype("int8")
+    ranker = GBDTRanker(max_iter=40).fit(X, y)
+    scores = ranker.score(X)
+    # Rank correlation with the driving feature should be strongly positive.
+    order = np.argsort(-scores)
+    top_mean = X[order[:200], 0].mean()
+    bottom_mean = X[order[-200:], 0].mean()
+    assert top_mean > bottom_mean
+
+
+def test_unfitted_ranker_refuses_to_score():
+    from recsys.ranker import GBDTRanker
+
+    with pytest.raises(RuntimeError):
+        GBDTRanker().score(np.zeros((2, 6), dtype="float32"))

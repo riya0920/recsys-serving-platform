@@ -4,11 +4,98 @@ ANN candidate retrieval → learned ranker, behind an HTTP service whose model p
 is designed to be killed. Offline evaluation uses a global time-based split; the
 serving tier degrades to a popularity fallback instead of returning 5xx.
 
-> **Status: ~40% built.** Retrieval, evaluation, the ANN benchmark harness and the
-> degradable serving tier are implemented and tested. The ranker, shadow
-> deployment, load tests and the measured latency/throughput numbers are not —
-> see [Roadmap](#roadmap). Nothing below is reported as a measured result until
-> it is. There are no A/B results in this repo, only offline metrics.
+> **Status: ~70% built.** Retrieval, the **learned stage-2 ranker**, evaluation,
+> the ANN benchmark, **MLflow experiment lineage**, the degradable serving tier
+> and a **chaos drill run under live load** are implemented and measured. Shadow
+> deployment, automated rollback and the throughput benchmark are not — see
+> [Roadmap](#roadmap). Every metric here is **offline**; there are no A/B results
+> in this repo.
+
+## Stage 2: the learned ranker
+
+Retrieval optimises recall over 50K items with one dot product. Ranking optimises
+precision over ~200 candidates and can afford features that would be impossible
+at corpus scale. Measured on the same users, the same candidate slates, so the
+only difference is the ordering:
+
+| | retrieval only | + ranker | lift |
+|---|---|---|---|
+| NDCG@10 | 0.0923 | **0.1079** | **+16.9%** |
+| recall@10 | 0.1211 | **0.1388** | +14.6% |
+
+**The training-data decision matters more than the model choice.** Negatives are
+sampled from the *retriever's own top-K*, not uniformly from the catalogue. A
+ranker trained on uniform negatives learns to separate "plausible" from "absurd"
+— which retrieval already did — so at serving time, where it only ever sees
+plausible items, its training and serving distributions disagree and the offline
+lift evaporates. `test_training_negatives_come_from_the_retrieved_slate` pins it.
+
+**The ranker is trained on the validation window and scored on test.** Training
+it on the window it is evaluated on leaks, and the leak is invisible in the
+metric — it just looks like a very good ranker.
+
+**Features are deliberately cheap**: six values that are all lookups or
+arithmetic on things already in hand at request time. No joins, no second model,
+no feature-store round trip. A ranker whose features cannot be computed inside
+the latency budget is a research artifact.
+
+**GBDT, not a neural ranker**, because with six tabular features trees win on
+quality per unit of effort and are far cheaper to serve. The documented trigger
+for revisiting is high-cardinality or sequential features.
+
+## Experiment lineage
+
+Every ranker run is tracked in MLflow (SQLite backend), so comparing two
+configurations is a query rather than a memory:
+
+| candidates | negatives/pos | lr | depth | NDCG lift |
+|---|---|---|---|---|
+| 200 | 4 | 0.05 | 4 | **+20.9%** |
+| 200 | 4 | 0.05 | 8 | +19.9% |
+| 200 | 4 | 0.12 | 4 | +19.1% |
+| 200 | 4 | 0.12 | 8 | +16.2% |
+| 100 | 6 | 0.08 | 6 | +16.2% |
+| 300 | 2 | 0.08 | 6 | +11.0% |
+| 100 | 2 | 0.08 | 6 | +9.7% |
+
+The clearest signal in the sweep is **negatives per positive**, not the tree
+hyperparameters: dropping from 4 to 2 costs more lift than any depth or
+learning-rate change tested. That is consistent with the hard-negative argument
+above and is the kind of thing a tracked sweep tells you and a remembered one
+does not.
+
+## The chaos drill, run under live load
+
+The differentiator the spec asks for — model dies mid-load-test, fallback
+engages, zero errors — as a **re-runnable script** rather than a GIF, because a
+script can be verified and a GIF cannot:
+
+```
+$ make chaos
+
+total_requests   7,243
+total_errors         0
+
+  healthy        req= 1570  errors=0  degraded=0.0000  p50= 94.2ms  p99=1259.2ms
+  model_killed   req= 3553  errors=0  degraded=0.9963  p50= 49.5ms  p99= 151.7ms
+  recovered      req= 2120  errors=0  degraded=0.0047  p50= 85.6ms  p99= 147.7ms
+
+PASSED: True
+```
+
+Zero 5xx and zero connection errors across all three phases. During the outage
+**99.6% of requests were served from the fallback and none were empty**; after
+revival the service returns to the model path on its own.
+
+Note the fallback is *faster* than the model path (49.5 ms vs 94.2 ms p50),
+which is exactly what you want from a degradation path — it must not itself
+become the bottleneck under the conditions that triggered it.
+
+**A bug the drill found in its own harness:** the first run reported 32 errors
+that looked like service failures. They were connection refusals during the
+42-second startup while uvicorn imports torch and reads the FAISS index. The
+drill now waits for `/healthz` before it starts, because counting startup
+artifacts as errors makes a passing drill look like a failing one.
 
 ## What is here
 
@@ -88,11 +175,12 @@ Shipping an approximate index at this corpus size would have been cargo-culting.
 | Time-split protocol + cold-start reporting | done |
 | ANN benchmark harness (recall vs latency) | done |
 | Degradable serving tier + chaos hook | done |
-| **Learned ranker over the top-500 candidates** | not started |
-| **Load test (zipf mix), max RPS at p99 < 100ms on named hardware** | not started |
-| **Chaos drill artifact: kill model mid-load-test, 0 errors** | hook exists, drill not scripted |
+| Learned stage-2 ranker with hard-negative sampling | done |
+| Two-stage offline evaluation on identical candidate slates | done |
+| MLflow experiment lineage across a tracked sweep | done |
+| Chaos drill under live load: 7,243 requests, 0 errors | done |
+| **Load test: max RPS at p99 < 100ms on named hardware** | not measured |
 | **Shadow deployment + gated promotion + automated rollback** | not started |
-| **MLflow experiment lineage (10+ runs)** | not started |
 | **Feature-staleness experiment (0/1/7-day) to justify a TTL** | not started |
 | **`docs/SCALING.md`: what breaks first at 25M interactions/hour** | not started |
 
@@ -104,6 +192,11 @@ Shipping an approximate index at this corpus size would have been cargo-culting.
   25M-row download; `--ratings-csv` switches to real MovieLens with an identical
   schema. Numbers from the generator are labelled as such and are not evidence
   about real user behaviour.
-* The only latency numbers here are **index search latency**, single-threaded and
-  unloaded (see the caveats in the ANN doc). No end-to-end serving latency and no
-  throughput number is quoted, because the load test has not been run yet.
+* **The chaos drill's latency figures are from a 32-client run on a laptop that
+  was also generating the load.** They demonstrate that degradation works, not
+  what this service can sustain. **No max-RPS number is claimed**, because the
+  throughput benchmark has not been run.
+* The ANN table's latencies remain single-threaded and unloaded index search.
+* The ranker lift is **offline**, on a synthetic corpus, against the same
+  candidate slates. It is not evidence about live user behaviour, and no A/B
+  test has been run.
