@@ -1,4 +1,4 @@
-.PHONY: install test train ranker bench serve chaos mlflow
+.PHONY: install test train ranker bench serve chaos shadow loadtest mlflow
 install:
 	pip install -r requirements.txt
 test:
@@ -13,5 +13,9 @@ serve:
 	PYTHONPATH=src uvicorn service.app:app --host 0.0.0.0 --port 8000
 chaos:
 	PYTHONPATH=src python -m service.chaos --url http://localhost:8000 --duration 18 --concurrency 32
+shadow:
+	PYTHONPATH=src python -m service.shadow demo
+loadtest:
+	PYTHONPATH=src python -m service.loadtest --url http://localhost:8000 --sweep 8 16 32 64
 mlflow:
 	mlflow ui --backend-store-uri sqlite:///artifacts/mlflow.db

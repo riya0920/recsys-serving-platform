@@ -1,0 +1,171 @@
+{
+  "rejected_on_latency": {
+    "gate": {
+      "passed": false,
+      "checks": {
+        "sample_size": {
+          "ok": true,
+          "requests": 600,
+          "required": 500
+        },
+        "offline_metric": {
+          "ok": true,
+          "champion": 0.1,
+          "candidate": 0.13,
+          "relative_delta": 0.3
+        },
+        "error_rate": {
+          "ok": true,
+          "candidate": 0.0,
+          "ceiling": 0.001
+        },
+        "p99_latency": {
+          "ok": false,
+          "champion_p99_ms": 24.0,
+          "candidate_p99_ms": 64.0,
+          "ratio": 2.6666666666666665,
+          "max_multiple": 1.25
+        }
+      },
+      "reasons": [
+        "candidate p99 is 2.67x champion (limit 1.25x). A quality gain that costs the tail is usually a bad trade."
+      ]
+    },
+    "state": "rejected"
+  },
+  "rejected_on_sample_size": {
+    "gate": {
+      "passed": false,
+      "checks": {
+        "sample_size": {
+          "ok": false,
+          "requests": 40,
+          "required": 500
+        },
+        "offline_metric": {
+          "ok": true,
+          "champion": 0.1,
+          "candidate": 0.14,
+          "relative_delta": 0.4000000000000001
+        },
+        "error_rate": {
+          "ok": true,
+          "candidate": 0.0,
+          "ceiling": 0.001
+        },
+        "p99_latency": {
+          "ok": true,
+          "champion_p99_ms": 20.0,
+          "candidate_p99_ms": 20.0,
+          "ratio": 1.0,
+          "max_multiple": 1.25
+        }
+      },
+      "reasons": [
+        "only 40 shadow requests; 500 required. Deciding on a small sample is the most common way a promotion gate gets fooled."
+      ]
+    },
+    "state": "rejected"
+  },
+  "promoted": {
+    "gate": {
+      "passed": true,
+      "checks": {
+        "sample_size": {
+          "ok": true,
+          "requests": 800,
+          "required": 500
+        },
+        "offline_metric": {
+          "ok": true,
+          "champion": 0.1,
+          "candidate": 0.118,
+          "relative_delta": 0.17999999999999988
+        },
+        "error_rate": {
+          "ok": true,
+          "candidate": 0.0,
+          "ceiling": 0.001
+        },
+        "p99_latency": {
+          "ok": true,
+          "champion_p99_ms": 23.0,
+          "candidate_p99_ms": 24.0,
+          "ratio": 1.0434782608695652,
+          "max_multiple": 1.25
+        }
+      },
+      "reasons": []
+    },
+    "state": "promoted"
+  },
+  "rollback": {
+    "windows": [
+      {
+        "metric": 0.118,
+        "rolled_back": false,
+        "consecutive_bad_windows": 0,
+        "drop": 0.0
+      },
+      {
+        "metric": 0.117,
+        "rolled_back": false,
+        "consecutive_bad_windows": 0,
+        "drop": 0.008474576271186331
+      },
+      {
+        "metric": 0.1,
+        "rolled_back": false,
+        "consecutive_bad_windows": 1,
+        "drop": 0.15254237288135583
+      },
+      {
+        "metric": 0.099,
+        "rolled_back": false,
+        "consecutive_bad_windows": 2,
+        "drop": 0.16101694915254228
+      },
+      {
+        "metric": 0.098,
+        "rolled_back": true,
+        "consecutive_bad_windows": 3,
+        "reverted_to": "v1"
+      },
+      {
+        "metric": 0.097,
+        "rolled_back": false,
+        "reason": "not in a promoted state"
+      }
+    ],
+    "final_state": "rolled_back",
+    "history": [
+      {
+        "from": "candidate",
+        "to": "evaluating",
+        "note": "candidate now scoring live traffic; output discarded",
+        "at": 0
+      },
+      {
+        "from": "evaluating",
+        "to": "promoted",
+        "note": "gate passed on all checks",
+        "at": 1
+      },
+      {
+        "from": "promoted",
+        "to": "rolled_back",
+        "note": "3 consecutive windows more than 5% below the promoted metric",
+        "at": 2
+      }
+    ]
+  },
+  "comparator_false_positive_rate": {
+    "trials": 500,
+    "windows_per_trial": 20,
+    "metric_noise_sd": 0.03,
+    "consecutive_windows_required": 3,
+    "rollback_drop_threshold": 0.05,
+    "false_positive_rate": 0.002,
+    "note": "ground truth is a HEALTHY model in every trial, so every rollback here is a false alarm by construction. This is the comparator's error rate, measured."
+  }
+}

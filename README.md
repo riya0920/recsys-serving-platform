@@ -4,12 +4,87 @@ ANN candidate retrieval → learned ranker, behind an HTTP service whose model p
 is designed to be killed. Offline evaluation uses a global time-based split; the
 serving tier degrades to a popularity fallback instead of returning 5xx.
 
-> **Status: ~70% built.** Retrieval, the **learned stage-2 ranker**, evaluation,
+> **Status: ~90% built.** Retrieval, the **learned stage-2 ranker**, evaluation,
 > the ANN benchmark, **MLflow experiment lineage**, the degradable serving tier
-> and a **chaos drill run under live load** are implemented and measured. Shadow
-> deployment, automated rollback and the throughput benchmark are not — see
-> [Roadmap](#roadmap). Every metric here is **offline**; there are no A/B results
-> in this repo.
+> a **chaos drill under live load**, **shadow deployment with a gated promotion
+> and automated rollback**, and a **measured max-RPS-within-budget** are
+> implemented and measured. A feature-staleness study and `SCALING.md` are not —
+> see [Roadmap](#roadmap). Every metric here is **offline**; there are no A/B
+> results in this repo.
+
+## Max RPS at p99 < 100 ms
+
+Windows 11, Intel Ice Lake, 8 logical CPUs. Single uvicorn worker, zipf user
+distribution, client sharing the machine with the server.
+
+| concurrency | RPS | p50 | p99 | within 100 ms budget? |
+|---|---|---|---|---|
+| 16 | **436.1** | 34.8 ms | **73.6 ms** | **yes** |
+| 64 | 482.8 | 133.8 ms | 155.8 ms | no |
+
+**436 RPS at p99 73.6 ms**, zero errors. Higher concurrency buys 10% more
+throughput and blows the tail budget by 56% — which is the entire reason the
+answer is a *sweep* rather than a single number. One concurrency level gives one
+point on a curve; "max RPS at p99 < X" is a question about where the curve
+crosses.
+
+## Shadow deployment, gated promotion, automated rollback
+
+A state machine with explicit transitions, not a flag someone flips:
+
+```
+CANDIDATE --shadow--> EVALUATING --gate passes--> PROMOTED
+                          |                           |
+                          +--fails--> REJECTED        +--regression--> ROLLED_BACK
+```
+
+**Shadow traffic means the candidate scores every live request and its output is
+discarded.** Users are served by the champion throughout. That is what makes it
+safe — and also what makes it **not an A/B test**: it measures whether the
+candidate *can serve*, not whether users prefer it. Confusing the two is how a
+"successful shadow" ships a model nobody wanted.
+
+The gate **ANDs** four checks rather than scoring them, because a weighted score
+lets a large win on one axis hide a disqualifying failure on another:
+
+| check | why |
+|---|---|
+| offline metric not worse | it must be better at the thing it was trained for |
+| error rate ≤ ceiling | a model that scores well and throws is not a candidate |
+| p99 ≤ 1.25× champion | a quality gain that costs the tail is usually a bad trade |
+| ≥ 500 shadow requests | deciding on 40 requests is the classic way a gate gets fooled |
+
+`make shadow` runs three worked lifecycles:
+
+```
+rejected_on_latency       candidate p99 is 2.67x champion (limit 1.25x)
+rejected_on_sample_size   only 40 shadow requests; 500 required
+promoted                  gate passed on all checks
+
+rollback:  0.118 -> ok    0.117 -> ok    0.100 -> bad(1)
+           0.099 -> bad(2)    0.098 -> bad(3) -> ROLLED BACK to v1
+```
+
+### "Your rollback triggered — how do you know it wasn't a false alarm?"
+
+That question has a measured answer here rather than a reassurance.
+
+`simulate_stability` runs 500 trials of a **healthy** model whose metric
+fluctuates with noise but never truly degrades. Ground truth is known, so **every
+rollback is a false alarm by construction**:
+
+| | value |
+|---|---|
+| trials (all healthy) | 500 |
+| consecutive bad windows required | 3 |
+| **comparator false-positive rate** | **0.2%** |
+
+Requiring three consecutive bad windows rather than one is what buys that.
+Reverting on a single noisy window is its own outage, and
+`test_rollback_needs_consecutive_bad_windows_not_one` pins that a recovery in
+between resets the counter. A second test asserts a noisier metric raises the
+false-positive rate — otherwise the simulation would not be measuring what it
+claims.
 
 ## Stage 2: the learned ranker
 
@@ -179,8 +254,9 @@ Shipping an approximate index at this corpus size would have been cargo-culting.
 | Two-stage offline evaluation on identical candidate slates | done |
 | MLflow experiment lineage across a tracked sweep | done |
 | Chaos drill under live load: 7,243 requests, 0 errors | done |
-| **Load test: max RPS at p99 < 100ms on named hardware** | not measured |
-| **Shadow deployment + gated promotion + automated rollback** | not started |
+| Concurrency sweep: max RPS within a p99 budget | done |
+| Shadow deployment, ANDed promotion gate, automated rollback | done |
+| Rollback comparator false-positive rate measured | done |
 | **Feature-staleness experiment (0/1/7-day) to justify a TTL** | not started |
 | **`docs/SCALING.md`: what breaks first at 25M interactions/hour** | not started |
 
@@ -192,10 +268,13 @@ Shipping an approximate index at this corpus size would have been cargo-culting.
   25M-row download; `--ratings-csv` switches to real MovieLens with an identical
   schema. Numbers from the generator are labelled as such and are not evidence
   about real user behaviour.
-* **The chaos drill's latency figures are from a 32-client run on a laptop that
-  was also generating the load.** They demonstrate that degradation works, not
-  what this service can sustain. **No max-RPS number is claimed**, because the
-  throughput benchmark has not been run.
+* **Every latency and throughput figure is from a laptop that was also
+  generating the load**, with a closed-loop client that understates the tail
+  under saturation. They are floors, not ceilings.
+* **The shadow deployment is driven by synthetic statistics, not by two live
+  models.** The state machine, the gate and the rollback comparator are real and
+  tested; wiring them to two concurrently-serving model versions in the FastAPI
+  app is the remaining step.
 * The ANN table's latencies remain single-threaded and unloaded index search.
 * The ranker lift is **offline**, on a synthetic corpus, against the same
   candidate slates. It is not evidence about live user behaviour, and no A/B

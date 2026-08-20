@@ -1,0 +1,62 @@
+{
+  "hardware": {
+    "platform": "Windows-11-10.0.26200-SP0",
+    "processor": "Intel64 Family 6 Model 126 Stepping 5, GenuineIntel",
+    "cpu_count": 8
+  },
+  "budget_p99_ms": 100.0,
+  "startup_wait_s": 10.2,
+  "levels": [
+    {
+      "concurrency": 8,
+      "requests": 4246,
+      "rps": 424.6,
+      "p50_ms": 17.82059998367913,
+      "p95_ms": 25.76982500613667,
+      "p99_ms": 48.52648001105991,
+      "errors": 0,
+      "meets_budget": true
+    },
+    {
+      "concurrency": 16,
+      "requests": 4361,
+      "rps": 436.1,
+      "p50_ms": 34.79210002114996,
+      "p95_ms": 52.89479997009039,
+      "p99_ms": 73.6191600211895,
+      "errors": 0,
+      "meets_budget": true
+    },
+    {
+      "concurrency": 32,
+      "requests": 4788,
+      "rps": 478.8,
+      "p50_ms": 65.9138500050176,
+      "p95_ms": 83.52316497475839,
+      "p99_ms": 115.622289000894,
+      "errors": 0,
+      "meets_budget": false
+    },
+    {
+      "concurrency": 64,
+      "requests": 4828,
+      "rps": 482.8,
+      "p50_ms": 133.7884000095073,
+      "p95_ms": 149.20649501727894,
+      "p99_ms": 155.8081909851171,
+      "errors": 0,
+      "meets_budget": false
+    }
+  ],
+  "max_rps_within_budget": {
+    "concurrency": 16,
+    "requests": 4361,
+    "rps": 436.1,
+    "p50_ms": 34.79210002114996,
+    "p95_ms": 52.89479997009039,
+    "p99_ms": 73.6191600211895,
+    "errors": 0,
+    "meets_budget": true
+  },
+  "caveat": "closed-loop client sharing the machine with the server, so the tail is understated under saturation and the throughput is a floor."
+}

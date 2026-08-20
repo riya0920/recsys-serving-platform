@@ -195,3 +195,133 @@ def test_unfitted_ranker_refuses_to_score():
 
     with pytest.raises(RuntimeError):
         GBDTRanker().score(np.zeros((2, 6), dtype="float32"))
+
+
+# --------------------------------------------------------------------------
+# shadow deployment, promotion gate, rollback
+# --------------------------------------------------------------------------
+
+def _stats(name, n, latency, metric, errors=0):
+    from service.shadow import ModelStats
+
+    s = ModelStats(name)
+    s.requests = n
+    s.errors = errors
+    s.latencies_ms = [latency] * n
+    s.offline_metric = metric
+    return s
+
+
+def test_gate_rejects_a_candidate_that_is_better_but_slower():
+    """A quality gain that costs the tail is usually a bad trade."""
+    from service.shadow import GateConfig, evaluate_gate
+
+    champ = _stats("v1", 800, 20.0, 0.10)
+    cand = _stats("v2", 800, 60.0, 0.14)
+    r = evaluate_gate(champ, cand, GateConfig())
+    assert not r.passed
+    assert not r.checks["p99_latency"]["ok"]
+    assert r.checks["offline_metric"]["ok"], "the metric itself improved; latency is what failed"
+
+
+def test_gate_rejects_on_insufficient_sample_size():
+    from service.shadow import GateConfig, evaluate_gate
+
+    champ = _stats("v1", 40, 20.0, 0.10)
+    cand = _stats("v2", 40, 20.0, 0.20)
+    r = evaluate_gate(champ, cand, GateConfig(min_requests=500))
+    assert not r.passed
+    assert not r.checks["sample_size"]["ok"]
+
+
+def test_gate_rejects_a_candidate_that_errors():
+    """A model that scores well and throws is not a candidate."""
+    from service.shadow import GateConfig, evaluate_gate
+
+    champ = _stats("v1", 800, 20.0, 0.10)
+    cand = _stats("v2", 800, 20.0, 0.15, errors=40)
+    r = evaluate_gate(champ, cand, GateConfig())
+    assert not r.passed
+    assert not r.checks["error_rate"]["ok"]
+
+
+def test_gate_checks_are_anded_not_scored():
+    """One disqualifying failure must not be outweighed by a large win elsewhere."""
+    from service.shadow import GateConfig, evaluate_gate
+
+    champ = _stats("v1", 800, 20.0, 0.10)
+    # Enormous metric win, but it errors constantly.
+    cand = _stats("v2", 800, 20.0, 0.90, errors=400)
+    assert not evaluate_gate(champ, cand, GateConfig()).passed
+
+
+def test_a_good_candidate_is_promoted():
+    from service.shadow import ShadowDeployment, State
+
+    d = ShadowDeployment("v1", "v2")
+    d.start_shadow()
+    d.set_offline_metrics(0.100, 0.118)
+    for _ in range(800):
+        d.record("v1", 20.0)
+        d.record("v2", 21.0)
+    assert d.try_promote().passed
+    assert d.state == State.PROMOTED
+
+
+def test_rollback_needs_consecutive_bad_windows_not_one():
+    """A single bad window is noise. Reverting on noise is its own outage."""
+    from service.shadow import GateConfig, ShadowDeployment, State
+
+    d = ShadowDeployment("v1", "v2", GateConfig(rollback_consecutive_windows=3))
+    d.start_shadow()
+    d.set_offline_metrics(0.100, 0.120)
+    for _ in range(800):
+        d.record("v1", 20.0)
+        d.record("v2", 20.0)
+    d.try_promote()
+
+    assert not d.observe_window(0.100)["rolled_back"]      # bad 1
+    assert not d.observe_window(0.120)["rolled_back"]      # recovered -> counter resets
+    assert not d.observe_window(0.100)["rolled_back"]      # bad 1 again
+    assert not d.observe_window(0.099)["rolled_back"]      # bad 2
+    assert d.observe_window(0.098)["rolled_back"]          # bad 3 -> fires
+    assert d.state == State.ROLLED_BACK
+
+
+def test_rollback_reverts_to_the_previous_champion():
+    from service.shadow import ShadowDeployment
+
+    d = ShadowDeployment("v1", "v2")
+    d.start_shadow()
+    d.set_offline_metrics(0.100, 0.120)
+    for _ in range(800):
+        d.record("v1", 20.0)
+        d.record("v2", 20.0)
+    d.try_promote()
+    result = None
+    for m in (0.09, 0.09, 0.09):
+        result = d.observe_window(m)
+    assert result["rolled_back"]
+    assert result["reverted_to"] == "v1"
+
+
+def test_rollback_comparator_false_positive_rate_is_low():
+    """The answer to 'how do you know it wasn't a false alarm'.
+
+    Ground truth is a healthy model in every trial, so any rollback is a false
+    alarm by construction.
+    """
+    from service.shadow import simulate_stability
+
+    r = simulate_stability(trials=200, windows=20, noise=0.03)
+    assert r["false_positive_rate"] <= 0.05, r
+
+
+def test_a_noisier_metric_raises_the_false_positive_rate():
+    """Sanity on the comparator: more noise must make false alarms more likely,
+    or the simulation is not measuring what it claims."""
+    from service.shadow import simulate_stability
+
+    calm = simulate_stability(trials=200, windows=20, noise=0.01, seed=1)
+    wild = simulate_stability(trials=200, windows=20, noise=0.12, seed=1)
+    assert wild["false_positive_rate"] >= calm["false_positive_rate"]
