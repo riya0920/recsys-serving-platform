@@ -8,11 +8,17 @@ class DataConfig:
     n_users: int = 6_000
     n_items: int = 50_000          # spec floor: >=50K items for retrieval to be non-trivial
     n_events: int = 1_200_000
+    days: int = 180               # span of generated traffic
     # Time-based split boundaries expressed as quantiles of the event timestamp.
     # Rationale in docs/SPLIT_JUSTIFICATION.md -- a random split leaks the future.
     train_end_q: float = 0.85
     valid_end_q: float = 0.925
     zipf_a: float = 1.15           # item popularity skew; also used by the load generator
+    # Per-day probability that a user's topic preference resamples. Zero means a
+    # STATIONARY world, in which a frozen index never goes stale -- which is
+    # exactly what the first staleness run measured, and why this knob exists:
+    # the experiment can only detect drift the generator actually produces.
+    taste_drift_per_day: float = 0.0
     seed: int = 17
 
 

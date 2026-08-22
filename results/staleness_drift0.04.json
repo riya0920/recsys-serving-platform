@@ -1,0 +1,66 @@
+{
+  "taste_drift_per_day": 0.04,
+  "freeze_quantile": 0.85,
+  "eval_window_days": 1.0,
+  "frozen": [
+    "item_embeddings",
+    "ann_index",
+    "user_tower_weights"
+  ],
+  "kept_current": [
+    "already-seen exclusion list"
+  ],
+  "rows": [
+    {
+      "age_days": 0.0,
+      "eval_rows": 1419,
+      "users_scored": 1200,
+      "recall@10": 0.1025,
+      "ndcg@10": 0.05504522401932469,
+      "recall@100": 0.28708333333333336,
+      "baseline_recall@10": 0.09833333333333333,
+      "recall@10_vs_fresh_pct": 0.0
+    },
+    {
+      "age_days": 1.0,
+      "eval_rows": 1406,
+      "users_scored": 1200,
+      "recall@10": 0.10194444444444443,
+      "ndcg@10": 0.05717427837340954,
+      "recall@100": 0.27708333333333335,
+      "baseline_recall@10": 0.10944444444444443,
+      "recall@10_vs_fresh_pct": -0.542005420054204
+    },
+    {
+      "age_days": 3.0,
+      "eval_rows": 1359,
+      "users_scored": 1200,
+      "recall@10": 0.09527777777777778,
+      "ndcg@10": 0.05243660121750312,
+      "recall@100": 0.28444444444444444,
+      "baseline_recall@10": 0.105,
+      "recall@10_vs_fresh_pct": -7.046070460704598
+    },
+    {
+      "age_days": 7.0,
+      "eval_rows": 1387,
+      "users_scored": 1200,
+      "recall@10": 0.09138888888888888,
+      "ndcg@10": 0.051964398382619924,
+      "recall@100": 0.27638888888888885,
+      "baseline_recall@10": 0.12263888888888888,
+      "recall@10_vs_fresh_pct": -10.840108401084015
+    },
+    {
+      "age_days": 14.0,
+      "eval_rows": 1359,
+      "users_scored": 1200,
+      "recall@10": 0.11208333333333333,
+      "ndcg@10": 0.059788282762115834,
+      "recall@100": 0.29777777777777775,
+      "baseline_recall@10": 0.13027777777777777,
+      "recall@10_vs_fresh_pct": 9.34959349593496
+    }
+  ],
+  "note": "this isolates the cost of a STALE INDEX. The seen-item exclusion list is kept current because in production it comes from an online store, and freezing both would conflate two failures with different fixes."
+}

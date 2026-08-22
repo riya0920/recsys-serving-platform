@@ -1,0 +1,66 @@
+{
+  "taste_drift_per_day": 0.0,
+  "freeze_quantile": 0.85,
+  "eval_window_days": 1.0,
+  "frozen": [
+    "item_embeddings",
+    "ann_index",
+    "user_tower_weights"
+  ],
+  "kept_current": [
+    "already-seen exclusion list"
+  ],
+  "rows": [
+    {
+      "age_days": 0.0,
+      "eval_rows": 1414,
+      "users_scored": 1200,
+      "recall@10": 0.10625,
+      "ndcg@10": 0.060288755745924426,
+      "recall@100": 0.2679166666666667,
+      "baseline_recall@10": 0.06902777777777777,
+      "recall@10_vs_fresh_pct": 0.0
+    },
+    {
+      "age_days": 1.0,
+      "eval_rows": 1342,
+      "users_scored": 1200,
+      "recall@10": 0.13444444444444442,
+      "ndcg@10": 0.07738066389370621,
+      "recall@100": 0.2911111111111111,
+      "baseline_recall@10": 0.07888888888888888,
+      "recall@10_vs_fresh_pct": 26.53594771241828
+    },
+    {
+      "age_days": 3.0,
+      "eval_rows": 1422,
+      "users_scored": 1200,
+      "recall@10": 0.11569444444444443,
+      "ndcg@10": 0.06450343787045892,
+      "recall@100": 0.2797222222222222,
+      "baseline_recall@10": 0.06972222222222223,
+      "recall@10_vs_fresh_pct": 8.88888888888888
+    },
+    {
+      "age_days": 7.0,
+      "eval_rows": 1394,
+      "users_scored": 1200,
+      "recall@10": 0.10805555555555554,
+      "ndcg@10": 0.061773268351631806,
+      "recall@100": 0.25833333333333336,
+      "baseline_recall@10": 0.06666666666666667,
+      "recall@10_vs_fresh_pct": 1.6993464052287495
+    },
+    {
+      "age_days": 14.0,
+      "eval_rows": 1369,
+      "users_scored": 1200,
+      "recall@10": 0.12319444444444443,
+      "ndcg@10": 0.0666433428804882,
+      "recall@100": 0.29277777777777775,
+      "baseline_recall@10": 0.08236111111111112,
+      "recall@10_vs_fresh_pct": 15.94771241830064
+    }
+  ],
+  "note": "this isolates the cost of a STALE INDEX. The seen-item exclusion list is kept current because in production it comes from an online store, and freezing both would conflate two failures with different fixes."
+}

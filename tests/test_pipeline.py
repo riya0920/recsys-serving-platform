@@ -325,3 +325,47 @@ def test_a_noisier_metric_raises_the_false_positive_rate():
     calm = simulate_stability(trials=200, windows=20, noise=0.01, seed=1)
     wild = simulate_stability(trials=200, windows=20, noise=0.12, seed=1)
     assert wild["false_positive_rate"] >= calm["false_positive_rate"]
+
+
+# --------------------------------------------------------------------------
+# staleness experiment
+# --------------------------------------------------------------------------
+
+def test_generator_is_stationary_when_drift_is_zero():
+    """The default world must not drift, or the staleness baseline is meaningless."""
+    cfg_a = DataConfig(n_users=200, n_items=1000, n_events=20_000, days=60, seed=3)
+    cfg_b = DataConfig(n_users=200, n_items=1000, n_events=20_000, days=60, seed=3)
+    a, b = synthesize(cfg_a), synthesize(cfg_b)
+    assert a["item_id"].tolist() == b["item_id"].tolist(), "generation must be deterministic"
+
+
+def test_drift_changes_late_period_behaviour():
+    """With drift on, the second half of the run must differ from the stationary
+    version -- otherwise the knob does nothing and the experiment cannot detect it."""
+    base = DataConfig(n_users=300, n_items=1500, n_events=30_000, days=60, seed=5)
+    drifted = DataConfig(n_users=300, n_items=1500, n_events=30_000, days=60, seed=5,
+                         taste_drift_per_day=0.08)
+    a, b = synthesize(base), synthesize(drifted)
+
+    late_a = a[a["ts"] > a["ts"].quantile(0.7)]["item_id"].to_numpy()
+    late_b = b[b["ts"] > b["ts"].quantile(0.7)]["item_id"].to_numpy()
+    differing = (late_a != late_b).mean()
+    assert differing > 0.05, "drift must actually change which items are chosen late in the run"
+
+
+def test_staleness_reports_the_drift_rate_it_ran_with():
+    """A staleness table without its drift rate is uninterpretable."""
+    from recsys.staleness import run
+
+    cfg = Config()
+    cfg.data.n_items = 600
+    cfg.data.n_events = 12_000
+    cfg.data.n_users = 300
+    cfg.data.days = 40
+    cfg.data.taste_drift_per_day = 0.05
+    cfg.model.epochs = 1
+
+    result = run([0, 1], cfg, eval_window_days=2.0, max_users=100)
+    assert result["taste_drift_per_day"] == 0.05
+    assert "already-seen exclusion list" in result["kept_current"]
+    assert "ann_index" in result["frozen"]

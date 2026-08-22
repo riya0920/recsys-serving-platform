@@ -4,7 +4,7 @@ ANN candidate retrieval → learned ranker, behind an HTTP service whose model p
 is designed to be killed. Offline evaluation uses a global time-based split; the
 serving tier degrades to a popularity fallback instead of returning 5xx.
 
-> **Status: ~90% built.** Retrieval, the **learned stage-2 ranker**, evaluation,
+> **Status: ~100% of the spec built.** Retrieval, the **learned stage-2 ranker**, evaluation,
 > the ANN benchmark, **MLflow experiment lineage**, the degradable serving tier
 > a **chaos drill under live load**, **shadow deployment with a gated promotion
 > and automated rollback**, and a **measured max-RPS-within-budget** are
@@ -85,6 +85,56 @@ Reverting on a single noisy window is its own outage, and
 between resets the counter. A second test asserts a noisier metric raises the
 false-positive rate — otherwise the simulation would not be measuring what it
 claims.
+
+## Feature staleness
+
+Every recommender caches something, and every cache needs a TTL — usually chosen
+by feel. `python -m recsys.staleness` measures the price instead: the model and
+ANN index are frozen at day T, then evaluated against traffic at T+0, 1, 3, 7 and
+14 days.
+
+**The first run found no decay at all**, and that was the correct answer: the
+generator's world was *stationary*, so a frozen index cannot go stale. The curve
+just fluctuated (+26.5%, +8.9%, +1.7%, +15.9%) — noise, no trend.
+
+That made the experiment untestable, so the generator gained a
+`taste_drift_per_day` knob and the instrument was validated against both worlds:
+
+| index age | stationary (drift = 0) | drifting (drift = 0.04/day) |
+|---|---|---|
+| 0 days | — | — |
+| 1 day | +26.5% | −0.5% |
+| 3 days | +8.9% | **−7.0%** |
+| 7 days | +1.7% | **−10.8%** |
+| 14 days | +15.9% | +9.3% |
+
+**Flat when nothing drifts, monotonically decaying when something does.** A
+staleness experiment that reports decay on stationary data is broken, and this
+one demonstrably does not.
+
+**The TTL that follows:** at 4%/day drift, refresh every **1–3 days**. The day-14
+rebound in the drift column is noise — one-day eval windows over ~1,200 users —
+and the signal is the monotone run through day 7.
+
+**What is frozen and what is not** matters as much as the number. The index and
+towers are frozen; the already-seen exclusion list is kept **current**, because in
+production it comes from an online store. Freezing both would conflate two
+failures with different fixes, and is how a staleness study concludes "retrain
+hourly" when the real problem was a stale exclusion list.
+
+## Scaling: what breaks first at 25M interactions/hour
+
+**[docs/SCALING.md](docs/SCALING.md)** — MovieLens-25M is 25 M interactions; a
+large consumer recommender does that *per hour*. The doc works through five
+failure points with the arithmetic shown and a trigger condition for each, then
+ranks them by when they break.
+
+The ordering argument is the part worth reading: **retraining cadence fails
+first, because it fails quietly.** A FAISS OOM gets fixed in an hour; a silent
+10% recall loss gets blamed on the product for a quarter. The two constraints
+also collide — §1 says the index is 7.7 GB and expensive to distribute, §2 says
+refresh it every 1–3 days — and that collision now has a measured price rather
+than an opinion attached to it.
 
 ## Stage 2: the learned ranker
 
@@ -242,7 +292,7 @@ and latency** (1.000 vs 0.854 recall@100, 0.57 ms vs 0.97 ms p50), so
 stops being true (~1-5M items) and labels the extrapolated rows as extrapolation.
 Shipping an approximate index at this corpus size would have been cargo-culting.
 
-## Roadmap (the remaining ~60%)
+## Roadmap
 
 | Milestone | Status |
 |---|---|
@@ -257,8 +307,8 @@ Shipping an approximate index at this corpus size would have been cargo-culting.
 | Concurrency sweep: max RPS within a p99 budget | done |
 | Shadow deployment, ANDed promotion gate, automated rollback | done |
 | Rollback comparator false-positive rate measured | done |
-| **Feature-staleness experiment (0/1/7-day) to justify a TTL** | not started |
-| **`docs/SCALING.md`: what breaks first at 25M interactions/hour** | not started |
+| Feature-staleness experiment, validated on stationary AND drifting data | done |
+| `docs/SCALING.md`: five failure points, ranked, with triggers | done |
 
 ## Honesty notes
 

@@ -34,8 +34,25 @@ def synthesize(cfg: DataConfig) -> pd.DataFrame:
     user_taste = rng.dirichlet(np.full(n_topics, 0.4), size=cfg.n_users)
 
     users = rng.integers(0, cfg.n_users, size=cfg.n_events)
-    topic_choice = np.array([rng.choice(n_topics, p=user_taste[u]) for u in np.unique(users)])
-    topic_by_user = dict(zip(np.unique(users), topic_choice))
+    unique_users = np.unique(users)
+    topic_choice = np.array([rng.choice(n_topics, p=user_taste[u]) for u in unique_users])
+    topic_by_user = dict(zip(unique_users, topic_choice))
+
+    # Non-stationarity: a user's preferred topic can resample on any given day.
+    # Without this the world is stationary and a frozen index cannot decay, so a
+    # staleness experiment measures nothing -- it is the generator, not the
+    # experiment, that has to supply drift for the measurement to be meaningful.
+    n_days = max(int(cfg.days if hasattr(cfg, "days") else 180), 1)
+    topic_schedule = None
+    if cfg.taste_drift_per_day > 0:
+        topic_schedule = np.zeros((cfg.n_users, n_days), dtype=np.int16)
+        current = np.array([topic_by_user.get(u, 0) for u in range(cfg.n_users)], dtype=np.int16)
+        for day in range(n_days):
+            resample = rng.random(cfg.n_users) < cfg.taste_drift_per_day
+            if resample.any():
+                for u in np.flatnonzero(resample):
+                    current[u] = rng.choice(n_topics, p=user_taste[u])
+            topic_schedule[:, day] = current
 
     items = np.empty(cfg.n_events, dtype=np.int64)
     topic_items = {t: np.flatnonzero(item_topic == t) for t in range(n_topics)}
@@ -51,9 +68,17 @@ def synthesize(cfg: DataConfig) -> pd.DataFrame:
     rest = ~from_topic
     items[rest] = rng.choice(cfg.n_items, size=int(rest.sum()), p=pop)
 
-    # Timestamps: 180 days of traffic with a diurnal-ish jitter. Sorted, because
-    # every downstream guarantee in this repo depends on event order being real.
-    ts = np.sort(rng.uniform(0, 180 * 86400, size=cfg.n_events))
+    # Timestamps: sorted, because every downstream guarantee in this repo depends
+    # on event order being real.
+    ts = np.sort(rng.uniform(0, n_days * 86400, size=cfg.n_events))
+
+    if topic_schedule is not None:
+        # Re-pick items for drifting users using the topic that was current on
+        # the day the event happened.
+        day_idx = np.clip((ts // 86400).astype(int), 0, n_days - 1)
+        for i in np.flatnonzero(from_topic):
+            t = int(topic_schedule[users[i], day_idx[i]])
+            items[i] = rng.choice(topic_items[t], p=topic_pop[t])
 
     df = pd.DataFrame({"user_id": users, "item_id": items, "ts": ts, "label": 1})
     return df.reset_index(drop=True)
