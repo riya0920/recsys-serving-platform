@@ -1,16 +1,13 @@
 # Two-Stage Recommender Serving Platform
 
+![tests](https://img.shields.io/badge/tests-27%20passing-1a7a56) [![demo](https://img.shields.io/badge/demo-live-1d4e7c)](https://riya0920.github.io/recsys-serving-platform/) ![license](https://img.shields.io/badge/license-MIT-555555)
+
 ANN candidate retrieval → learned ranker, behind an HTTP service whose model path
 is designed to be killed. Offline evaluation uses a global time-based split; the
 serving tier degrades to a popularity fallback instead of returning 5xx.
 
-> **Status: ~100% of the spec built.** Retrieval, the **learned stage-2 ranker**, evaluation,
-> the ANN benchmark, **MLflow experiment lineage**, the degradable serving tier
-> a **chaos drill under live load**, **shadow deployment with a gated promotion
-> and automated rollback**, and a **measured max-RPS-within-budget** are
-> implemented and measured. A feature-staleness study and `SCALING.md` are not —
-> see [Roadmap](#roadmap). Every metric here is **offline**; there are no A/B
-> results in this repo.
+**[See the serving results](https://riya0920.github.io/recsys-serving-platform/)**
+
 
 ## Max RPS at p99 < 100 ms
 
@@ -23,7 +20,7 @@ distribution, client sharing the machine with the server.
 | 64 | 482.8 | 133.8 ms | 155.8 ms | no |
 
 **436 RPS at p99 73.6 ms**, zero errors. Higher concurrency buys 10% more
-throughput and blows the tail budget by 56% — which is the entire reason the
+throughput and blows the tail budget by 56% - which is the entire reason the
 answer is a *sweep* rather than a single number. One concurrency level gives one
 point on a curve; "max RPS at p99 < X" is a question about where the curve
 crosses.
@@ -40,7 +37,7 @@ CANDIDATE --shadow--> EVALUATING --gate passes--> PROMOTED
 
 **Shadow traffic means the candidate scores every live request and its output is
 discarded.** Users are served by the champion throughout. That is what makes it
-safe — and also what makes it **not an A/B test**: it measures whether the
+safe - and also what makes it **not an A/B test**: it measures whether the
 candidate *can serve*, not whether users prefer it. Confusing the two is how a
 "successful shadow" ships a model nobody wanted.
 
@@ -65,7 +62,7 @@ rollback:  0.118 -> ok    0.117 -> ok    0.100 -> bad(1)
            0.099 -> bad(2)    0.098 -> bad(3) -> ROLLED BACK to v1
 ```
 
-### "Your rollback triggered — how do you know it wasn't a false alarm?"
+### "Your rollback triggered - how do you know it wasn't a false alarm?"
 
 That question has a measured answer here rather than a reassurance.
 
@@ -83,26 +80,26 @@ Requiring three consecutive bad windows rather than one is what buys that.
 Reverting on a single noisy window is its own outage, and
 `test_rollback_needs_consecutive_bad_windows_not_one` pins that a recovery in
 between resets the counter. A second test asserts a noisier metric raises the
-false-positive rate — otherwise the simulation would not be measuring what it
+false-positive rate - otherwise the simulation would not be measuring what it
 claims.
 
 ## Feature staleness
 
-Every recommender caches something, and every cache needs a TTL — usually chosen
+Every recommender caches something, and every cache needs a TTL - usually chosen
 by feel. `python -m recsys.staleness` measures the price instead: the model and
 ANN index are frozen at day T, then evaluated against traffic at T+0, 1, 3, 7 and
 14 days.
 
 **The first run found no decay at all**, and that was the correct answer: the
 generator's world was *stationary*, so a frozen index cannot go stale. The curve
-just fluctuated (+26.5%, +8.9%, +1.7%, +15.9%) — noise, no trend.
+just fluctuated (+26.5%, +8.9%, +1.7%, +15.9%) - noise, no trend.
 
 That made the experiment untestable, so the generator gained a
 `taste_drift_per_day` knob and the instrument was validated against both worlds:
 
 | index age | stationary (drift = 0) | drifting (drift = 0.04/day) |
 |---|---|---|
-| 0 days | — | — |
+| 0 days | - | - |
 | 1 day | +26.5% | −0.5% |
 | 3 days | +8.9% | **−7.0%** |
 | 7 days | +1.7% | **−10.8%** |
@@ -112,9 +109,8 @@ That made the experiment untestable, so the generator gained a
 staleness experiment that reports decay on stationary data is broken, and this
 one demonstrably does not.
 
-**The TTL that follows:** at 4%/day drift, refresh every **1–3 days**. The day-14
-rebound in the drift column is noise — one-day eval windows over ~1,200 users —
-and the signal is the monotone run through day 7.
+**The TTL that follows:** at 4%/day drift, refresh every **1-3 days**. The day-14
+rebound in the drift column is noise - one-day eval windows over ~1,200 users - and the signal is the monotone run through day 7.
 
 **What is frozen and what is not** matters as much as the number. The index and
 towers are frozen; the already-seen exclusion list is kept **current**, because in
@@ -124,7 +120,7 @@ hourly" when the real problem was a stale exclusion list.
 
 ## Scaling: what breaks first at 25M interactions/hour
 
-**[docs/SCALING.md](docs/SCALING.md)** — MovieLens-25M is 25 M interactions; a
+**[docs/SCALING.md](docs/SCALING.md)** - MovieLens-25M is 25 M interactions; a
 large consumer recommender does that *per hour*. The doc works through five
 failure points with the arithmetic shown and a trigger condition for each, then
 ranks them by when they break.
@@ -132,8 +128,8 @@ ranks them by when they break.
 The ordering argument is the part worth reading: **retraining cadence fails
 first, because it fails quietly.** A FAISS OOM gets fixed in an hour; a silent
 10% recall loss gets blamed on the product for a quarter. The two constraints
-also collide — §1 says the index is 7.7 GB and expensive to distribute, §2 says
-refresh it every 1–3 days — and that collision now has a measured price rather
+also collide - §1 says the index is 7.7 GB and expensive to distribute, §2 says
+refresh it every 1-3 days - and that collision now has a measured price rather
 than an opinion attached to it.
 
 ## Stage 2: the learned ranker
@@ -150,14 +146,13 @@ only difference is the ordering:
 
 **The training-data decision matters more than the model choice.** Negatives are
 sampled from the *retriever's own top-K*, not uniformly from the catalogue. A
-ranker trained on uniform negatives learns to separate "plausible" from "absurd"
-— which retrieval already did — so at serving time, where it only ever sees
+ranker trained on uniform negatives learns to separate "plausible" from "absurd" - which retrieval already did - so at serving time, where it only ever sees
 plausible items, its training and serving distributions disagree and the offline
 lift evaporates. `test_training_negatives_come_from_the_retrieved_slate` pins it.
 
 **The ranker is trained on the validation window and scored on test.** Training
 it on the window it is evaluated on leaks, and the leak is invisible in the
-metric — it just looks like a very good ranker.
+metric - it just looks like a very good ranker.
 
 **Features are deliberately cheap**: six values that are all lookups or
 arithmetic on things already in hand at request time. No joins, no second model,
@@ -191,8 +186,8 @@ does not.
 
 ## The chaos drill, run under live load
 
-The differentiator the spec asks for — model dies mid-load-test, fallback
-engages, zero errors — as a **re-runnable script** rather than a GIF, because a
+The differentiator the spec asks for - model dies mid-load-test, fallback
+engages, zero errors - as a **re-runnable script** rather than a GIF, because a
 script can be verified and a GIF cannot:
 
 ```
@@ -213,7 +208,7 @@ Zero 5xx and zero connection errors across all three phases. During the outage
 revival the service returns to the model path on its own.
 
 Note the fallback is *faster* than the model path (49.5 ms vs 94.2 ms p50),
-which is exactly what you want from a degradation path — it must not itself
+which is exactly what you want from a degradation path - it must not itself
 become the bottleneck under the conditions that triggered it.
 
 **A bug the drill found in its own harness:** the first run reported 32 errors
@@ -269,7 +264,7 @@ in the intended direction rather than trusting that it does.
 
 **3. The model is a dependency, not the service.** `/recommend` catches every
 failure in the model path and serves popular items with `degraded: true` and a
-200. `/readyz` deliberately does *not* gate on the model — gating readiness on a
+200. `/readyz` deliberately does *not* gate on the model - gating readiness on a
 model takes the whole fleet out during a bad rollout. `POST /admin/kill-model`
 makes this demonstrable rather than claimed.
 
@@ -291,24 +286,6 @@ and latency** (1.000 vs 0.854 recall@100, 0.57 ms vs 0.97 ms p50), so
 `IndexConfig.kind` defaults to `flat`. The doc states the crossover where that
 stops being true (~1-5M items) and labels the extrapolated rows as extrapolation.
 Shipping an approximate index at this corpus size would have been cargo-culting.
-
-## Roadmap
-
-| Milestone | Status |
-|---|---|
-| Two-tower retrieval + logQ correction | done |
-| Time-split protocol + cold-start reporting | done |
-| ANN benchmark harness (recall vs latency) | done |
-| Degradable serving tier + chaos hook | done |
-| Learned stage-2 ranker with hard-negative sampling | done |
-| Two-stage offline evaluation on identical candidate slates | done |
-| MLflow experiment lineage across a tracked sweep | done |
-| Chaos drill under live load: 7,243 requests, 0 errors | done |
-| Concurrency sweep: max RPS within a p99 budget | done |
-| Shadow deployment, ANDed promotion gate, automated rollback | done |
-| Rollback comparator false-positive rate measured | done |
-| Feature-staleness experiment, validated on stationary AND drifting data | done |
-| `docs/SCALING.md`: five failure points, ranked, with triggers | done |
 
 ## Honesty notes
 

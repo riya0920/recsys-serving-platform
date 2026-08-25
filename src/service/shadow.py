@@ -22,13 +22,13 @@ model nobody wanted.
 
 Promotion requires ALL of:
 
-  1. **offline metric not worse** than champion beyond a tolerance — the
+  1. **offline metric not worse** than champion beyond a tolerance - the
      candidate must actually be better on the thing it was trained for
-  2. **error rate at or below champion** — a candidate that scores well and
+  2. **error rate at or below champion** - a candidate that scores well and
      throws is not a candidate
-  3. **p99 latency within a budget multiple** — a 10% quality gain that doubles
+  3. **p99 latency within a budget multiple** - a 10% quality gain that doubles
      tail latency is usually a bad trade, and the multiple makes that explicit
-  4. **minimum sample size** — the single most common way a promotion gate gets
+  4. **minimum sample size** - the single most common way a promotion gate gets
      fooled is deciding on 40 requests
 
 Any failure rejects. Gates are AND-ed rather than scored, because a weighted

@@ -3,7 +3,7 @@
     python -m service.loadtest --url http://localhost:8000 --sweep 8 16 32 64 128
 
 The spec asks for "max RPS at p99 < 100ms ON NAMED HARDWARE". A single
-concurrency level cannot answer that — it gives one point on a curve. The sweep
+concurrency level cannot answer that - it gives one point on a curve. The sweep
 walks concurrency upward and reports the last level that still met the budget,
 which is what "max RPS at p99 < X" actually means.
 

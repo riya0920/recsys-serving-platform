@@ -4,7 +4,7 @@ Produced by `python -m recsys.bench_ann --n-items 50000 --queries 500 --k 100`.
 Hardware: Windows 11, single-threaded FAISS CPU search, 64-d unit vectors, 64
 Gaussian clusters (σ=0.35). Recall is measured against the **exact** top-100 from
 the same vectors. Latency is **per query** (batch size 1), because at request
-time there is exactly one user vector — batched throughput is not serving
+time there is exactly one user vector - batched throughput is not serving
 latency.
 
 | index | recall@100 | p50 (ms) | p95 (ms) | p99 (ms) | build (s) |
@@ -28,7 +28,7 @@ items would be cargo-culting: it buys nothing and costs recall.
 
 ## Why exact wins at this size, and where it stops winning
 
-Exact search is 50,000 × 64 = 3.2M multiply-adds per query — one dense matmul
+Exact search is 50,000 × 64 = 3.2M multiply-adds per query - one dense matmul
 over ~13 MB of contiguous float32. That is a bandwidth-bound kernel that streams
 at several GB/s and lands well inside a 100 ms budget. Graph traversal (HNSW)
 instead does hundreds of dependent random reads; it wins on *asymptotics*, not on
@@ -44,8 +44,8 @@ the same hardware gives roughly
 | 5 M | ~57 ms | exact eats over half the p99 budget → switch |
 | 50 M | ~570 ms | approximate is mandatory; also no longer fits one node |
 
-**The trigger to revisit is ~1–5M items**, and the extrapolated rows above are
-labelled as extrapolation, not measurement — the rerun is one command.
+**The trigger to revisit is ~1-5M items**, and the extrapolated rows above are
+labelled as extrapolation, not measurement - the rerun is one command.
 
 ## Why IVF looks so bad here
 

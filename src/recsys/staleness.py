@@ -2,8 +2,8 @@
 
     python -m recsys.staleness --ages 0 1 3 7 14
 
-Every recommender caches something — user embeddings, item popularity, the ANN
-index itself — and every cache needs a TTL. That TTL is almost always chosen by
+Every recommender caches something - user embeddings, item popularity, the ANN
+index itself - and every cache needs a TTL. That TTL is almost always chosen by
 vibes ("an hour feels right"), which means nobody can say what it costs or what
 would justify changing it.
 
@@ -15,9 +15,9 @@ the refresh has to happen.
 **What is held stale and what is not**, because "staleness" is ambiguous and the
 answer differs per component:
 
-  * **item embeddings + ANN index** — frozen. This is the expensive artifact,
+  * **item embeddings + ANN index** - frozen. This is the expensive artifact,
     rebuilt on a cadence, and the thing a TTL actually governs.
-  * **user history used to exclude already-seen items** — kept CURRENT. In
+  * **user history used to exclude already-seen items** - kept CURRENT. In
     production this comes from an online store, not the batch job, and freezing
     it would conflate two very different failures. Conflating them is how a
     staleness study concludes "we must retrain hourly" when the real fix was a

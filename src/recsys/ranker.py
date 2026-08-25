@@ -2,7 +2,7 @@
 
 Retrieval optimises recall over 50K items with one dot product. Ranking optimises
 precision over ~500 candidates and can afford features that would be impossible
-at corpus scale — that division of labour is the entire reason for two stages.
+at corpus scale - that division of labour is the entire reason for two stages.
 
 **Training data is generated the way serving works.** Negatives are sampled from
 the *retriever's own top-K*, not uniformly from the catalogue. This matters more
@@ -13,7 +13,7 @@ serving distribution disagree and the measured offline lift evaporates. Sampling
 hard negatives from the retriever closes that gap.
 
 **Features are deliberately cheap.** Everything here is a lookup or arithmetic on
-values already in hand at request time — no joins, no second model, no feature
+values already in hand at request time - no joins, no second model, no feature
 store round trip. A ranker whose features cannot be computed inside the latency
 budget is a research artifact.
 """
