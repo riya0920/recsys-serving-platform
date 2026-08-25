@@ -1,4 +1,4 @@
-__pycache__/
+﻿__pycache__/
 *.pyc
 .venv/
 data/
@@ -10,3 +10,5 @@ mlruns/
 artifacts/mlflow.db
 artifacts/mlruns/
 artifacts/ranker.pkl
+
+.claude/
